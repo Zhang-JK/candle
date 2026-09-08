@@ -17,6 +17,24 @@ use candle::{DType, Device, Tensor};
 use candle_examples::hub::Api;
 use candle_examples::token_output_stream::TokenOutputStream;
 use candle_nn::VarBuilder;
+
+/// Scope `vb` to the language-model weights.
+///
+/// Official Gemma 4 checkpoints (`Gemma4ForConditionalGeneration`) nest them at
+/// `model.language_model.*`. A text-only export may use `model.*` instead.
+fn language_model_vb(vb: VarBuilder) -> Result<VarBuilder> {
+    if vb.contains_tensor("model.language_model.embed_tokens.weight") {
+        Ok(vb.pp("model").pp("language_model"))
+    } else if vb.contains_tensor("model.embed_tokens.weight") {
+        Ok(vb.pp("model"))
+    } else {
+        anyhow::bail!(
+            "cannot find Gemma 4 token embeddings; \
+            expected model.language_model.embed_tokens.weight \
+            or model.embed_tokens.weight"
+        )
+    }
+}
 use candle_transformers::generation::{LogitsProcessor, Sampling};
 use tokenizers::Tokenizer;
 
@@ -299,7 +317,7 @@ fn main() -> Result<()> {
             }
         };
         config.use_flash_attn = args.use_flash_attn;
-        let model = TextModel::new(&config, vb)?;
+        let model = TextModel::new(&config, language_model_vb(vb)?)?;
         ModelKind::TextOnly(model)
     };
 

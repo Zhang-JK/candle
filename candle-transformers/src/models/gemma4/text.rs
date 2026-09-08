@@ -528,10 +528,13 @@ pub struct TextModel {
 }
 
 impl TextModel {
+    /// Create a text model from weights rooted at the language-model module.
+    ///
+    /// For Hugging Face `Gemma4ForConditionalGeneration` checkpoints, pass a
+    /// `VarBuilder` already scoped to `model.language_model`.
     pub fn new(cfg: &Gemma4TextConfig, vb: VarBuilder) -> Result<Self> {
-        let vb_m = vb.pp("model");
         let embed_tokens =
-            candle_nn::embedding(cfg.vocab_size, cfg.hidden_size, vb_m.pp("embed_tokens"))?;
+            candle_nn::embedding(cfg.vocab_size, cfg.hidden_size, vb.pp("embed_tokens"))?;
 
         let rotary_emb_global = Arc::new(ProportionalRotaryEmbedding::new(
             vb.dtype(),
@@ -539,18 +542,18 @@ impl TextModel {
             cfg.rope_theta,
             cfg.partial_rotary_factor(),
             cfg.max_position_embeddings,
-            vb_m.device(),
+            vb.device(),
         )?);
         let rotary_emb_local = Arc::new(RotaryEmbedding::new(
             vb.dtype(),
             cfg.head_dim,
             cfg.rope_local_base_freq(),
             cfg.max_position_embeddings,
-            vb_m.device(),
+            vb.device(),
         )?);
 
         let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
-        let vb_l = vb_m.pp("layers");
+        let vb_l = vb.pp("layers");
         for layer_idx in 0..cfg.num_hidden_layers {
             let layer = DecoderLayer::new(
                 rotary_emb_global.clone(),
@@ -561,7 +564,7 @@ impl TextModel {
             )?;
             layers.push(layer)
         }
-        let norm = RmsNorm::new(cfg.hidden_size, cfg.rms_norm_eps, vb_m.pp("norm"))?;
+        let norm = RmsNorm::new(cfg.hidden_size, cfg.rms_norm_eps, vb.pp("norm"))?;
         let lm_head = if cfg.tie_word_embeddings {
             Linear::new(embed_tokens.embeddings().clone(), None)
         } else {
